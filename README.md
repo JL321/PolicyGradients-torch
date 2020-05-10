@@ -1,1 +1,1 @@
-# DDPG-torch
+# PolicyGradients-torch
