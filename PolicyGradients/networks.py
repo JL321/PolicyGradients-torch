@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np 
 import os
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 class Actor(nn.Module):
 
     def __init__(self, state_space, action_space):
@@ -25,7 +27,7 @@ class Actor(nn.Module):
         x = self.b1(F.relu(self.fc1(x)))
         x = self.b2(F.relu(self.fc2(x)))
         x = self.b3(F.relu(self.fc3(x)))
-        return self.fc4(x)
+        return F.tanh(self.fc4(x))
 
 class Critic(nn.Module):
 
@@ -56,13 +58,13 @@ class Critic(nn.Module):
 class DDPG():
 
     def __init__(self, state_space, action_space):
-        
+       
         self.exploreDistr = torch.distributions.normal.Normal(\
-                torch.zeros(action_space), torch.ones(action_space))
-        self.actor = Actor(state_space, action_space)
-        self.critic = Critic(state_space, action_space)
-        self.targActor = Actor(state_space, action_space)
-        self.targCritic = Critic(state_space, action_space)
+        torch.zeros(action_space), torch.ones(action_space))
+        self.actor = Actor(state_space, action_space).to(device)
+        self.critic = Critic(state_space, action_space).to(device)
+        self.targActor = Actor(state_space, action_space).to(device)
+        self.targCritic = Critic(state_space, action_space).to(device)
         self.actorOpt = torch.optim.Adam(self.actor.parameters(), lr=1e-4, weight_decay=0.005)
         self.criticOpt = torch.optim.Adam(self.critic.parameters(), lr=1e-3, weight_decay=0.005)
         self.loss = nn.MSELoss()
@@ -72,10 +74,10 @@ class DDPG():
     def predict(self, state, exploreNoise = True):
         
         self.actor.eval()
-        state = torch.from_numpy(state).float()
+        state = torch.from_numpy(state).float().to(device)
         pred = self.actor(state).detach()
         if exploreNoise:
-            pred += self.exploreDistr.sample()
+            pred += 0.1*self.exploreDistr.sample().to(device)
         return pred.numpy()[0]
 
     def train_step(self, replay, batch_count):
@@ -84,13 +86,13 @@ class DDPG():
         self.criticOpt.zero_grad()
         batch_sample = replay.sample(batch_count)
         state, action, reward, new_state, done = batch_sample
-        state = torch.from_numpy(state).float()
-        action = torch.from_numpy(action).float()
-        reward = torch.from_numpy(reward).float()
-        new_state = torch.from_numpy(new_state).float()
-        done = torch.from_numpy(done).float()
-        target = torch.unsqueeze(reward, 1)+torch.unsqueeze((1-done), 1)*self.gamma*(self.targCritic(new_state, self.targActor(new_state).detach()).detach())
-        critic_loss = self.loss(target, self.critic(state, action)).mean()
+        state = torch.from_numpy(state).float().to(device)
+        action = torch.from_numpy(action).float().to(device)
+        reward = torch.from_numpy(reward).float().to(device)
+        new_state = torch.from_numpy(new_state).float().to(device)
+        done = torch.from_numpy(done).float().to(device)
+        target = torch.unsqueeze(reward, 1)+torch.unsqueeze((1-done), 1)*self.gamma*(self.targCritic(new_state, self.targActor(new_state)))
+        critic_loss = self.loss(target, self.critic(state, action))
         critic_loss.backward()
         self.criticOpt.step()
 
@@ -112,10 +114,10 @@ class DDPG():
         
         if 'models' in path and os.path.isdir('models') is False:
             os.mkdir('models')
-        torch.save({'actor_weights': self.actor.state_dict,
-                    'critic_weights': self.critic.state_dict,
-                    'Coptimizer_param': self.criticOpt.state_dict,
-                    'Aoptimizer_param': self.actorOpt.state_dict
+        torch.save({'actor_weights': self.actor.state_dict(),
+                    'critic_weights': self.critic.state_dict(),
+                    'Coptimizer_param': self.criticOpt.state_dict(),
+                    'Aoptimizer_param': self.actorOpt.state_dict()
                     }, path)
         print("Saved Model Weights!")
 

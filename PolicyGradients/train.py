@@ -2,12 +2,14 @@ import gym
 from networks import DDPG, ReplayBuffer
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 
 batch_size = 64
+train = False
 
 def process_state(state):
     
-    state /= np.sqrt(np.sum(np.square(state)))
+    #state /= np.sqrt(np.sum(np.square(state)))
     return state
 
 def fillBuffer(env, memory, action_space, length = 1000):
@@ -21,6 +23,36 @@ def fillBuffer(env, memory, action_space, length = 1000):
         state = new_state
         if done:
             state = process_state(env.reset())
+
+def recordEps(env, model, save_path=None):
+
+    rec = gym.wrappers.monitoring.video_recorder.VideoRecorder(env, save_path)
+    state = env.reset()
+    r = 0
+    step = 0
+    while(True):
+        action = model.predict(np.expand_dims(state, axis=0), False)
+        rec.capture_frame()
+        state, reward, done, _ = env.step(action)
+        r += reward
+        step += 1
+        if done:
+            rec.close()
+            print("Reward at termination: {}".format(r))
+            print("Avg Reward: {}".format(r/step))
+            return
+
+def baseEp(env):
+
+    state = env.reset()
+    r = 0
+    while(True):
+        action = np.random.normal(size = env.action_space.shape[0])
+        state, reward, done, _ = env.step(action)
+        r += reward
+        if done:
+            print("Random: Reward at Termination: {}".format(r))
+            return
 
 def runEp(env, memory, model, returnReward=False):
      
@@ -45,7 +77,7 @@ def runEp(env, memory, model, returnReward=False):
         return step, epReward, action
     return step
 
-def train_model(env, memory, model, epIter = 10000):
+def train_model(env, memory, model, epIter = 1000):
     reward_plot = [] # Format of (time step, ep_reward) pairs
     tStep = 0
     for i in range(epIter):
@@ -54,25 +86,32 @@ def train_model(env, memory, model, epIter = 10000):
             reward_plot.append([tStep, epReward])
             if (i+1)%100 == 0:
                 print("Last Act on Step {}: {}".format(act, i))
+        else:
+            step = runEp(env, memory, model)
         if (i+1)%1000 == 0:
             print("Last action on last episode: {}".format(act))
             plt.plot([v[0] for v in reward_plot], [v[1] for v in reward_plot])
             plt.title("Episode Reward vs TimeStep")
             plt.show()
             model.save()
-        else:
-            step = runEp(env, memory, model)
         tStep += step
+    pickle.dump(reward_plot, open('rewardDataWalker2d-v2-gpu.p', 'wb'))
 
 def main():
 
-    env = gym.make('BipedalWalker-v2')
+    env = gym.make('Walker2d-v2')
     action_space = env.action_space.shape[0]
     state_space = env.observation_space.shape[0] 
     model = DDPG(state_space, action_space)
-    rmemory = ReplayBuffer(1e6)
-    fillBuffer(env, rmemory, action_space)
-    train_model(env, rmemory, model)
+    if train:
+        rmemory = ReplayBuffer(1e6)
+        fillBuffer(env, rmemory, action_space)
+        train_model(env, rmemory, model)
+    else:
+        model.load('models/DDPG')
+        recordEps(env, model, 'vid/walker.mp4')
+        for _ in range(5):
+            baseEp(env)
 
 if __name__ == '__main__':
     main()
