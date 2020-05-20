@@ -3,6 +3,11 @@ from networks import DDPG, ReplayBuffer
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import argparse 
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--train", type=bool, default=True, help="Set train mode or evaluate")
+args = parser.parse_args()
 
 batch_size = 64
 train = False
@@ -32,7 +37,7 @@ def recordEps(env, model, save_path=None):
     step = 0
     while(True):
         action = model.predict(np.expand_dims(state, axis=0), False)
-        rec.capture_frame()
+        #rec.capture_frame()
         state, reward, done, _ = env.step(action)
         r += reward
         step += 1
@@ -92,14 +97,14 @@ def train_model(env, memory, model, epIter = 1000):
             print("Last action on last episode: {}".format(act))
             plt.plot([v[0] for v in reward_plot], [v[1] for v in reward_plot])
             plt.title("Episode Reward vs TimeStep")
-            plt.show()
+            plt.show('models/DDPG_pend')
             model.save()
         tStep += step
-    pickle.dump(reward_plot, open('rewardDataWalker2d-v2-gpu.p', 'wb'))
+    pickle.dump(reward_plot, open('results/pendulum.p', 'wb'))
 
 def main():
 
-    env = gym.make('Walker2d-v2')
+    env = gym.make('Pendulum-v0')
     action_space = env.action_space.shape[0]
     state_space = env.observation_space.shape[0] 
     model = DDPG(state_space, action_space)
@@ -109,7 +114,7 @@ def main():
         train_model(env, rmemory, model)
     else:
         model.load('models/DDPG')
-        recordEps(env, model, 'vid/walker.mp4')
+        recordEps(env, model, 'vid/pendulum.mp4')
         for _ in range(5):
             baseEp(env)
 
