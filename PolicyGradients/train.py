@@ -1,5 +1,6 @@
 import gym
-from networks import DDPG, ReplayBuffer
+from DDPG import DDPG
+from utils import ReplayBuffer
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
