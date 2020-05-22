@@ -40,7 +40,8 @@ class ReplayBuffer():
         reward_b = np.array(reward_b)
         nextstate_b = np.array(nextstate_b)
         done_b = np.array(done_b)
-        if len(self.buffer[0] == 5):
+        if len(self.buffer[0]) == 5:
+            print("Red Flag")
             return (state_b, action_b, reward_b, nextstate_b, done_b)
         else:
             return (state_b, action_b, reward_b, nextstate_b, done_b, np.array(log_prob))

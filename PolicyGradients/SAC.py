@@ -1,8 +1,9 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.functional as F
+import torch.nn.functional as F
 from torch.distributions import Normal 
+import os 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -63,68 +64,99 @@ class SAC:
         self.qcritic = QCritic(state_space, action_space).to(device)
         self.qcritic2 = QCritic(state_space, action_space).to(device)
         self.tcritic = QCritic(state_space, action_space).to(device)
-        self.tcritic2 = QCritic(state_space, action_space).to(device)i
+        self.tcritic2 = QCritic(state_space, action_space).to(device)
         self.alpha = torch.zeros(1, device=device, requires_grad=True)
         self.target_ent = -action_space
 
-        self.act_opt = torch.optim.Adam(params=self.actor.parameters(), lr=self.lr).to(device)
-        self.qc_opt = torch.optim.Adam(params=self.qcritic.parameters(), lr=self.lr).to(device)
-        self.qc_opt2 = torch.optim.Adam(params=self.qcritic2.parameters(), lr=self.lr).to(device)
-        self.alpha_opt = torch.optim.Adam(self.alpha, lr=self.lr).to(device)
+        self.act_opt = torch.optim.Adam(params=self.actor.parameters(), lr=self.lr)
+        self.qc_opt = torch.optim.Adam(params=self.qcritic.parameters(), lr=self.lr)
+        self.qc_opt2 = torch.optim.Adam(params=self.qcritic2.parameters(), lr=self.lr)
+        self.alpha_opt = torch.optim.Adam([self.alpha], lr=self.lr)
 
 
-    def predict(self, x, sample_size=1, detach=True):
-        if detach:
-            mu, std = self.actor(x).detach()
+    def predict(self, x, sample_size=1, pred=True, internalCall=False):
+        if pred and not internalCall:
+            x = torch.from_numpy(x).float().to(device)
+        if pred:
+            with torch.no_grad():
+                #self.actor.eval()
+                mu, std = self.actor(x)
+            #print("Mu, Log_Std: {} {}".format(mu, std))
+            #self.get_actor_mean()
         else:
+            self.actor.train()
             mu, std = self.actor(x)
-        act_dist = Normal(torch.squeeze(mu), torch.squeeze(std)).to(device)
-        action = act_dist.sample(sample_size)
-        log_prob = act_dist.log_prob(action)
-        return action.numpy(), log_prob.numpy()
+        
+        #Treat initial output std as log_std - prevent <= 0 std
+        std = std.exp()
+        act_dist = Normal(torch.squeeze(mu), torch.squeeze(std))
+        
+        action = torch.squeeze(F.tanh(act_dist.rsample([sample_size])))
+        
+        #  Internalcall used in training, evaluation and data collection has default False
+        if internalCall:
+            log_prob = act_dist.log_prob(action).sum(1, keepdim=True)
+            return action, log_prob
+        else:
+            #print("Action: {} State: {}".format(action, x))
+            #self.get_actor_mean()
+            log_prob = act_dist.log_prob(action).sum(0, keepdim=True)
+            return np.squeeze(action.numpy()), np.squeeze(log_prob.numpy())
 
 
-    def _soft_update(self):
+    def _update_target(self):
         for q1, q1t in zip(self.qcritic.parameters(), self.tcritic.parameters()):
             q1t.data *= (1-self.tau)
             q1t.data += (self.tau)*q1.data
-        for q2, q2t in zip(self.qcritic2.parameters(), self.tcritic2.parameters())
+        for q2, q2t in zip(self.qcritic2.parameters(), self.tcritic2.parameters()):
             q2t.data *= (1-self.tau)
             q2t.data += self.tau*q2.data
 
 
-    def train(self, replay_buffer):
-        state_set, action_set, reward_set, nstate_set, logprob_set, done_set = replay_buffer.sample()
-        state_set = torch.from_numpy(state_set).to(device)
-        action_set = torch.from_numpy(action_set).to(device)
-        reward_set = torch.from_numpy(reward_set).to(device)
-        nstate_set = torch.from_numpy(nstate_set).to(device)
-        done_set = torch.from_numpy(done_set).to(device)
-        logprob_set = torch.from_numpy(logprob_set).to(device)
-
-        self.qc_opt.zero_grad()
-        self.qc_opt2.zero_grad()
-        act, log_prob = self.predict(nstate_set, self.batch_size)),
+    def train_step(self, replay_buffer, batch_size):
+        state_set, action_set, reward_set, nstate_set, logprob_set, done_set = replay_buffer.sample(self.batch_size)
+        state_set = torch.from_numpy(state_set).float().to(device)
+        action_set = torch.from_numpy(action_set).float().to(device)
+        reward_set = torch.from_numpy(reward_set).float().to(device)
+        nstate_set = torch.from_numpy(nstate_set).float().to(device)
+        done_set = torch.from_numpy(done_set).float().to(device)
+        logprob_set = torch.from_numpy(logprob_set).float().to(device)
+        
+        act, log_prob = self.predict(nstate_set, internalCall=True)
         qOut = torch.min(self.tcritic(nstate_set, act).detach(), self.tcritic2(nstate_set, act).detach())
         qOut -= self.alpha.detach()*(log_prob)
-        target = reward_set+self.gamma*qOut
+        reward_set = torch.unsqueeze(reward_set, 1)
+        done_set = torch.unsqueeze(done_set, 1)
+        target = reward_set+(1-done_set)*self.gamma*qOut
         q1loss = F.mse_loss(target, self.qcritic(state_set, action_set))
         q2loss = F.mse_loss(target, self.qcritic2(state_set, action_set))
+        
+        self.qc_opt.zero_grad()
         q1loss.backward()
         self.qc_opt.step()
+        self.qc_opt2.zero_grad()
         q2loss.backward()
         self.qc_opt2.step()
 
         self.act_opt.zero_grad()
-        min_q = torch.min(self.qcritic(state_set, action_set), self.qcritic2(state_set, act))
-        act, log_prob  = self.predict(state_set, self.batch_size, False)
-        actor_loss = self.alpha.detach()*log_prob-min_q
+        min_q = torch.min(self.qcritic(state_set, action_set).detach(), self.qcritic2(state_set, act).detach())
+        act, log_prob = self.predict(state_set, 1, False, True)
+        actor_loss = (self.alpha.detach()*log_prob-min_q).mean() 
         actor_loss.backward()
         self.act_opt.step()
+        
+        self.alpha_opt.zero_grad()
+        alphaLoss = (-self.alpha*(logprob_set+self.target_ent)).mean()
+        alphaLoss.backward()
+        self.alpha_opt.step()
+        self._update_target()
+        #print("Loss List: q1 {}, q2 {}, act {}, alpha {}".format(q1loss, q2loss, actor_loss, alphaLoss)) 
 
     def save(self, path=None):
         if path is None:
             path = 'models/{}'.format(self.name)
+            if os.path.isdir('models') is False:
+                os.mkdir('models')
         torch.save({
             'qcritic': self.qcritic.state_dict(),
             'qcritic2': self.qcritic2.state_dict(),
@@ -133,7 +165,7 @@ class SAC:
             'alpha': self.alpha,
             'qopt': self.qc_opt.state_dict(),
             'qopt2': self.qc_opt2.state_dict(),
-            'alphaOpt', self.alpha_opt.state_dict()
+            'alphaOpt': self.alpha_opt.state_dict()
             }, path) 
     
 
@@ -149,4 +181,11 @@ class SAC:
         self.qc_opt.load_state_dict(load_dict['qopt'])
         self.qc_opt2.load_state_dict(load_dict['qopt2'])
         self.alpha_opt.load_state_dict(load_dict['alphaOpt'])
-
+    
+    
+    def get_actor_mean(self):
+        print("Start")
+        for name, p in self.actor.named_parameters():
+            print(name)
+            print(p.data.mean())
+        print("End")
