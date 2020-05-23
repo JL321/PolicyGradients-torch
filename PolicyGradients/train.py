@@ -79,7 +79,7 @@ def runEp(env, memory, model, returnlp=False, returnReward=False):
             action = model.predict(np.expand_dims(state, axis=0))
         else:
             action, log_prob = model.predict(np.expand_dims(state, axis=0))
-        action = np.clip(action, -5, 5)
+        
         new_state, reward, done, _ = env.step(action)
         new_state = process_state(new_state)
         if not returnlp:
@@ -87,12 +87,12 @@ def runEp(env, memory, model, returnlp=False, returnReward=False):
         else:
             memory.add((state, action, reward, new_state, log_prob, done))
         state = new_state
-        step += 1 
-        model.train_step(memory, batch_size) 
+        step += 1
+        if len(memory.buffer) != 0:
+            model.train_step(memory, batch_size) 
         if returnReward:
             epReward += reward
         if done:
-            print("Done!")
             break
     if returnReward:
         return step, epReward, action
@@ -109,7 +109,7 @@ def train_model(env, memory, model, epIter=1000):
                 print("Last Act on Step {}: {}".format(act, i))
         else:
             step = runEp(env, memory, model, returnlp=True)
-        if (i+1)%1000 == 0:
+        if (i+1)%100 == 0:
             print("Last action on last episode: {}".format(act))
             plt.plot([v[0] for v in reward_plot], [v[1] for v in reward_plot])
             plt.title("Episode Reward vs TimeStep")
@@ -127,7 +127,7 @@ def main():
     model = SAC(state_space, action_space, name='SAC_cheetah')
     if args.train:
         rmemory = ReplayBuffer(1e6)
-        fillBuffer(env, rmemory, action_space)
+        #fillBuffer(env, rmemory, action_space)
         train_model(env, rmemory, model)
     else:
         model.load('models/SAC')

@@ -6,6 +6,9 @@ from torch.distributions import Normal
 import os 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+eps = 1e-6
+min_std = -20
+max_std = 2
 
 class Actor(nn.Module):
 
@@ -23,6 +26,7 @@ class Actor(nn.Module):
         z = F.relu(self.fc2(z))
         mu = self.fc3mu(z)
         std = self.fc3std(z)
+        std = torch.clamp(std, min_std, max_std)
         return mu, std
 
 class QCritic(nn.Module):
@@ -74,7 +78,7 @@ class SAC:
         self.alpha_opt = torch.optim.Adam([self.alpha], lr=self.lr)
 
 
-    def predict(self, x, sample_size=1, pred=True, internalCall=False):
+    def predict(self, x, pred=True, internalCall=False):
         if pred and not internalCall:
             x = torch.from_numpy(x).float().to(device)
         if pred:
@@ -89,18 +93,23 @@ class SAC:
         
         #Treat initial output std as log_std - prevent <= 0 std
         std = std.exp()
-        act_dist = Normal(torch.squeeze(mu), torch.squeeze(std))
+        act_dist = Normal(mu, std)
         
-        action = torch.squeeze(F.tanh(act_dist.rsample([sample_size])))
-        
+        u = act_dist.rsample()
+        action = F.tanh(u)
+        log_prob = act_dist.log_prob(u)
+        jacobian = torch.log((1-torch.square(action))+eps)
+        #if internalCall:
+        jacobian = jacobian.sum(1, keepdim=True)
+        log_prob -= jacobian
+    
         #  Internalcall used in training, evaluation and data collection has default False
+        log_prob = log_prob.sum(1, keepdim=True)
         if internalCall:
-            log_prob = act_dist.log_prob(action).sum(1, keepdim=True)
             return action, log_prob
         else:
             #print("Action: {} State: {}".format(action, x))
             #self.get_actor_mean()
-            log_prob = act_dist.log_prob(action).sum(0, keepdim=True)
             return np.squeeze(action.numpy()), np.squeeze(log_prob.numpy())
 
 
@@ -140,7 +149,7 @@ class SAC:
 
         self.act_opt.zero_grad()
         min_q = torch.min(self.qcritic(state_set, action_set).detach(), self.qcritic2(state_set, act).detach())
-        act, log_prob = self.predict(state_set, 1, False, True)
+        act, log_prob = self.predict(state_set, False, True)
         actor_loss = (self.alpha.detach()*log_prob-min_q).mean() 
         actor_loss.backward()
         self.act_opt.step()
@@ -151,6 +160,7 @@ class SAC:
         self.alpha_opt.step()
         self._update_target()
         #print("Loss List: q1 {}, q2 {}, act {}, alpha {}".format(q1loss, q2loss, actor_loss, alphaLoss)) 
+        #self.get_actor_mean()
 
     def save(self, path=None):
         if path is None:
@@ -188,4 +198,6 @@ class SAC:
         for name, p in self.actor.named_parameters():
             print(name)
             print(p.data.mean())
+            print("Gradient Data")
+            print(p.grad.data.mean())
         print("End")
