@@ -1,12 +1,11 @@
 # PolicyGradients-torch
+This repo contains implementations of SAC and DDPG in pytorch. 
 
 Dependencies:
 - gym
 - numpy
 - pytorch (scripts written in cuda 9.2)
 - python3
-
-This repo contains implementations of SAC and DDPG in pytorch. 
 
 Structure:
 - train.py is the main file to be run: use --test to load a model, and run the model for evaluation
