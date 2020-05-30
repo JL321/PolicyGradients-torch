@@ -1,5 +1,11 @@
 # PolicyGradients-torch
 
+Dependencies:
+- gym
+- numpy
+- pytorch (scripts written in cuda 9.2)
+- python3
+
 This repo contains implementations of SAC and DDPG in pytorch. 
 
 Structure:
