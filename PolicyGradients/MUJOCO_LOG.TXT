@@ -7,3 +7,51 @@ ERROR: Invalid activation key
 Tue May 12 11:47:43 2020
 ERROR: Invalid activation key
 
+Sat May 23 08:24:12 2020
+ERROR: Invalid activation key
+
+Tue May 26 23:25:17 2020
+ERROR: Invalid activation key
+
+Wed May 27 10:51:10 2020
+ERROR: Invalid activation key
+
+Wed May 27 07:56:27 2020
+ERROR: Invalid activation key
+
+Wed May 27 10:57:08 2020
+ERROR: Invalid activation key
+
+Wed May 27 20:30:06 2020
+ERROR: Invalid activation key
+
+Wed May 27 20:30:07 2020
+ERROR: Invalid activation key
+
+Thu May 28 11:19:19 2020
+ERROR: Invalid activation key
+
+Fri May 29 12:44:59 2020
+ERROR: Invalid activation key
+
+Fri May 29 12:53:18 2020
+ERROR: Invalid activation key
+
+Fri May 29 12:54:40 2020
+ERROR: Invalid activation key
+
+Fri May 29 12:57:06 2020
+ERROR: Invalid activation key
+
+Fri May 29 13:01:07 2020
+ERROR: Invalid activation key
+
+Fri May 29 13:02:33 2020
+ERROR: Invalid activation key
+
+Fri May 29 13:04:40 2020
+ERROR: Invalid activation key
+
+Fri May 29 13:06:41 2020
+ERROR: Invalid activation key
+
