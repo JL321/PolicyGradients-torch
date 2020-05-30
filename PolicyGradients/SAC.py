@@ -81,7 +81,9 @@ class SAC:
         self.action_scale = torch.tensor((self.max_action-self.min_action)/2., dtype=torch.float32).to(device)
         self.action_bias = torch.tensor((self.max_action+self.min_action)/2., dtype=torch.float32).to(device)
 
-    def predict(self, x, pred=True, internalCall=False):
+    def predict(self, x, pred=True, internalCall=False, test=False):
+        if test:
+            self.actor.eval()
         if pred and not internalCall:
             x = torch.from_numpy(x).float().to(device)
         if pred:
@@ -105,7 +107,10 @@ class SAC:
         #if internalCall:
         jacobian = jacobian.sum(1, keepdim=True)
         log_prob -= jacobian
-    
+        
+        if test:
+            action = F.tanh(mu)*self.action_scale+self.action_bias
+            self.actor.train()
         #  Internalcall used in training, evaluation and data collection has default False
         log_prob = log_prob.sum(1, keepdim=True)
         if internalCall:

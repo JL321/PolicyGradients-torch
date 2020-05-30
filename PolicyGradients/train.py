@@ -39,24 +39,28 @@ def fillBuffer(env, memory, action_space, length=1000, returnlp=True):
         if done:
             state = process_state(env.reset())
 
-def recordEps(env, model, save_path=None):
+def recordEps(env, model, recordEps=True, save_path=None):
 
-    rec = gym.wrappers.monitoring.video_recorder.VideoRecorder(env, save_path)
+    #  Records episode run by default, otherwise acts as a test run for the model
+    if recordEps:
+        rec = gym.wrappers.monitoring.video_recorder.VideoRecorder(env, save_path)
     state = env.reset()
     r = 0
     step = 0
     while(True and step <= 5000):
-        tup = model.predict(np.expand_dims(state, axis=0))
+        tup = model.predict(np.expand_dims(state, axis=0), test=True)
         if (type(tup) is tuple):
             action, _ = tup
         else:
             action = tup
-        rec.capture_frame()
+        if recordEps:
+            rec.capture_frame()
         state, reward, done, _ = env.step(action)
         r += reward
         step += 1
         if done:
-            rec.close()
+            if recordEps:
+                rec.close()
             print("Reward at termination: {}".format(r))
             print("Avg Reward: {}".format(r/step))
             return
@@ -124,12 +128,11 @@ def train_model(env, memory, model, epIter=200):
             for j in range(len(stepList)):
                 stepList[j] += tStep
             reward_plot.extend([[a,b] for a,b in zip(stepList, epochReward)])
-            if (i+1)%100 == 0:
-                print("Last Act on Step {}: {}".format(act, i))
         else:
             step = runEp(env, memory, model, returnlp=True)
         if ((i+1)%20 == 0):
             print("Last action on last episode: {}".format(act))
+            print("Runtime (hours) at checkpoint: {}".format((time.time()-start_time)/3600))
             '''
             plt.plot([v[0] for v in reward_plot], [v[1] for v in reward_plot])
             plt.title("Episode Reward vs TimeStep")
@@ -137,7 +140,7 @@ def train_model(env, memory, model, epIter=200):
             '''
             model.save()
         tStep += step
-    pickle.dump(reward_plot, open('results/SAC_cheetah.p', 'wb'))
+    pickle.dump(reward_plot, open('results/DDPG_cheetah.p', 'wb'))
 
 def main():
    
@@ -159,18 +162,22 @@ def main():
             'max_action': env.action_space.high,\
             'min_action': env.action_space.low\
             }
-    model = SAC(state_space, action_space, hp=hp, name='SAC_halfCheetahv4')
+    model = DDPG(state_space, action_space)
+    #model = SAC(state_space, action_space, hp=hp, name='DDPG_halfCheetahv2')
     if args.test is False:
         rmemory = ReplayBuffer(int(1e6))
         #fillBuffer(env, rmemory, action_space)
         train_model(env, rmemory, model, 200)
-        recordEps(env, model, 'vid/halfCheetah.mp4')
+        recordEps(env, model, 'vid/DDPGhalfCheetah.mp4')
         print("Baseline comparison")
         for _ in range(5):
             baseEp(env)
     else:
-        model.load('models/SAC_cheetah')
-        recordEps(env, model, 'vid/halfCheetah.mp4')
+        model.load('models/DDPG_cheetah')
+        if torch.cuda.is_available():
+            recordEps(env, model, False, 'vid/halfCheetah.mp4')
+        else:
+            recordEps(env, model, False, 'vid/halfCheetah.mp4')
         for _ in range(5):
             baseEp(env)
     print("End runtime: {} seconds".format(time.time()-start_time))

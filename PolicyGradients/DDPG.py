@@ -71,9 +71,10 @@ class DDPG():
         self.gamma = 0.99
         self.rho = 0.001
 
-    def predict(self, state, exploreNoise = True):
+    def predict(self, state, exploreNoise=True, test=True):
         
-        self.actor.eval()
+        if test: #  Unneeded- currently a hack to maintain consistent inputs with SAC 
+            self.actor.eval()
         state = torch.from_numpy(state).float().to(device)
         pred = self.actor(state).detach()
         if exploreNoise:
@@ -82,6 +83,7 @@ class DDPG():
 
     def train_step(self, replay, batch_count):
         
+        #  Set actor to train mode
         self.actor.train()
         self.criticOpt.zero_grad()
         batch_sample = replay.sample(batch_count)
@@ -92,7 +94,7 @@ class DDPG():
         new_state = torch.from_numpy(new_state).float().to(device)
         done = torch.from_numpy(done).float().to(device)
         target = torch.unsqueeze(reward, 1)+torch.unsqueeze((1-done), 1)*self.gamma*(self.targCritic(new_state, self.targActor(new_state)))
-        critic_loss = self.loss(target, self.critic(state, action))
+        critic_loss = self.loss(target.detach(), self.critic(state, action))
         critic_loss.backward()
         self.criticOpt.step()
 
